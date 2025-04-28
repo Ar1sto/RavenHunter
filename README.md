@@ -179,7 +179,7 @@ When scraping `.gov` websites, you must be mindful of the following:
 
 ---
 
-## Screenshots
+## Output
 
 ### 1. Scraping Output
 
