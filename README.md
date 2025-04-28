@@ -59,7 +59,7 @@ python RavenHunter.py --help
 To begin scraping and storing found links, run:
 
 ```bash
-python RavenHunter3.py
+python RavenHunter.py
 ```
 
 For specific tasks, use the following flags:
@@ -68,21 +68,21 @@ For specific tasks, use the following flags:
     - Export links to a CSV or JSON file.
     - Example: 
     ```bash
-    python RavenHunter3.py --export json
+    python RavenHunter.py --export json
     ```
 
 - **Download found documents**: 
     - Download all documents found in the scraping process.
     - Example:
     ```bash
-    python RavenHunter3.py -dl
+    python RavenHunter.py -dl
     ```
 
 - **Resume scraping**: 
     - Resume the scraping from the last page saved.
     - Example:
     ```bash
-    python RavenHunter3.py --resume
+    python RavenHunter.py --resume
     ```
 
 ### Command Line Options
@@ -110,7 +110,7 @@ If you wish to export the found links without scraping new data, you can use the
 ### Example Export Command
 
 ```bash
-python RavenHunter3.py --export csv
+python RavenHunter.py --export csv
 ```
 
 This command will generate a CSV file with all found links in the format:
