@@ -6,6 +6,9 @@ import json
 import csv
 import os
 import sys
+import re
+import platform
+import subprocess
 from tqdm import tqdm
 from datetime import datetime
 from colorama import init as enable
@@ -22,7 +25,7 @@ BASE_URL = "https://www.cia.gov/readingroom/search/site/*?page={}"
 DOCUMENT_PREFIX = "https://www.cia.gov/readingroom/document/"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; Project-RavenHunter/3.0)"
+    "User-Agent": "Mozilla/5.0 (compatible; Project-RavenHunter/4.0)"
 }
 
 banner = """
@@ -36,7 +39,7 @@ banner = """
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⡟⠁⠀⠀⠀⠀⠀
 ╔═══════════════════════════════════════════════════╗⠀⠀⠀⠀
-║ ╦═╗┌─┐┬  ┬┌─┐┌┐┌╦ ╦┬ ┬┌┐┌┌┬┐┌─┐┬─┐ v3.1.0         ║
+║ ╦═╗┌─┐┬  ┬┌─┐┌┐┌╦ ╦┬ ┬┌┐┌┌┬┐┌─┐┬─┐ v4.0.1         ║
 ║ ╠╦╝├─┤└┐┌┘├┤ │││╠═╣│ ││││ │ ├┤ ├┬┘                ║
 ║ ╩╚═┴ ┴ └┘ └─┘┘└┘╩ ╩└─┘┘└┘ ┴ └─┘┴└─ ~ by 0mniscius ║
 ║ [+] CIA RDP-Document Scraping & Dumping Tool      ║
@@ -63,8 +66,13 @@ def init_db():
     conn.commit()
     return conn, c
 
-
 # === LOGIC ===
+
+def get_last_page(conn):
+    c = conn.cursor()
+    c.execute("SELECT page_number FROM last_page WHERE id = 1")
+    row = c.fetchone()
+    return row[0] if row else 0
 
 def export_found_links(format="json"):
     links = get_all_found_links()
@@ -82,8 +90,8 @@ def export_found_links(format="json"):
 
     elif format == "csv":
         with open("cia_docs_export.csv", "w", newline='', encoding="utf-8") as f:
-            writer = csv.writer(f)
             f.write(header)
+            writer = csv.writer(f)
             writer.writerow(["URL"])
             for url in links:
                 writer.writerow([url])
@@ -92,34 +100,16 @@ def export_found_links(format="json"):
     else:
         print(f"[!] Unknown export format: {format}")
 
-
-def log_found(url):
-    with sqlite3.connect(DB_NAME) as conn:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        conn.execute("INSERT OR IGNORE INTO found_links (url, timestamp) VALUES (?, ?)", (url, timestamp))
-        conn.commit()
-
-
 def get_all_found_links():
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.execute("SELECT url FROM found_links")
         return [row[0] for row in c.fetchall()]
-
 
 def show_summary():
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.execute("SELECT COUNT(*) FROM found_links")
         count = c.fetchone()[0]
         print(f"[✔] Documents already extracted: {count}")
-
-
-def check_link(url):
-    try:
-        r = requests.head(url, headers=HEADERS, timeout=10, allow_redirects=True)
-        return r.status_code == 200
-    except requests.RequestException as e:
-        print(f"[ERROR] Request failed for {url}: {e}")
-        return False
 
 # === SCRAPE FUNCTIONS ===
 
@@ -128,101 +118,89 @@ def transform_link(original_link):
     doc_id_upper = doc_id.upper()
     return f"https://www.cia.gov/readingroom/docs/{doc_id_upper}.pdf"
 
-async def scrape_documents(timeout, resume_page, verbose, conn, c):
+def extract_total_pages(html):
+    match = re.search(r'pager-last.*?page=(\d+)', html)
+    return int(match.group(1)) if match else -1
+
+async def get_total_pages_from_page(page):
+    try:
+        await page.wait_for_selector("li.pager-last a", timeout=5000)
+        content = await page.content()
+        return extract_total_pages(content)
+    except Exception as e:
+        print(f"[ERROR] Failed to get total pages: {e}")
+        return -1
+
+def tor_service_running():
+    try:
+        if platform.system() == "Windows":
+            result = subprocess.check_output("tasklist", shell=True).decode()
+            return "tor.exe" in result.lower()
+        else:
+            result = subprocess.run(["pgrep", "tor"], stdout=subprocess.DEVNULL)
+            return result.returncode == 0
+    except Exception:
+        return False
+
+async def scrape_documents(timeout, resume_page, verbose, conn, c, use_tor=False):
     page_number = resume_page
+    total_pages = -1
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)  # Headless False, da Bug wenn im Hintergrund ausgeführt (DOM-Elemente werden nicht gerendert)
+        proxy = {"server": "socks5://127.0.0.1:9050"} if use_tor else None
+        browser = await p.chromium.launch(headless=False, proxy=proxy)
         context = await browser.new_context(extra_http_headers=HEADERS)
+        page = await context.new_page()
 
         while True:
             url = BASE_URL.format(page_number)
             print(f"\n[INFO] Loading page {page_number}...")
-
-            page = await context.new_page()
             try:
-                await page.goto(url, wait_until="networkidle", timeout=10000)
-
-                print("[INFO] Waiting for at least one <h3 class='title'>-element...")
+                await page.goto(url, wait_until="networkidle", timeout=1000000)
+                if total_pages == -1:
+                    total_pages = await get_total_pages_from_page(page)
+                print(f"[INFO] Loading page {page_number}/{total_pages}...")
                 await page.wait_for_selector("h3.title a", timeout=5000)
-
                 print("[INFO] Retrieving HTML content...")
                 content = await page.content()
 
+                soup = BeautifulSoup(content, "html.parser")
+                h3_titles = soup.find_all('h3', class_='title')
+                document_links = [a['href'] for h3 in h3_titles if (a := h3.find('a', href=True)) and a['href'].startswith(DOCUMENT_PREFIX)]
 
-                if page_number > get_last_page(conn):
-                    c.execute('UPDATE last_page SET page_number = ? WHERE id = 1', (page_number,))
-                    conn.commit()
+                if not document_links:
+                    print(f"[INFO] No document links found on page {page_number}. Exiting.")
+                    break
 
+                for doc_link in tqdm(document_links, desc=f"[INFO] Processing links from page {page_number}"):
+                    transformed_link = transform_link(doc_link)
+                    try:
+                        c.execute("INSERT INTO found_links (url, timestamp) VALUES (?, ?)",
+                                  (transformed_link, datetime.now().isoformat()))
+                    except sqlite3.IntegrityError:
+                        pass
+                conn.commit()
+                c.execute('UPDATE last_page SET page_number = ? WHERE id = 1', (page_number,))
+                conn.commit()
+
+                page_number += 1
+                print("[INFO] Waiting...")
+                await asyncio.sleep(timeout)
 
             except PlaywrightTimeoutError:
                 print(f"[WARNING] Timeout on page {page_number}. Exiting.")
                 break
             except Exception as e:
                 print(f"[ERROR] Problem loading the page: {e}")
-                break
-            finally:
-                await page.close()
-
-            soup = BeautifulSoup(content, "html.parser")
-            h3_titles = soup.find_all('h3', class_='title')
-
-            document_links = []
-            for h3 in h3_titles:
-                a_tag = h3.find('a', href=True)
-                if a_tag and a_tag['href'].startswith(DOCUMENT_PREFIX):
-                    document_links.append(a_tag['href'])
-
-            if not document_links:
-                print(f"[INFO] No document links found on page {page_number}. Exiting.")
-                break
-
-            for doc_link in tqdm(document_links, desc=f"Processing links from page {page_number}"):
-                transformed_link = transform_link(doc_link)
-                log_found(transformed_link)
-                if verbose:
-                    print(f"[INFO] Found link: {transformed_link}")
-
-            page_number += 1
-            print("[INFO] Waiting...")
-            await asyncio.sleep(timeout)  
-
-            with sqlite3.connect(DB_NAME) as conn:
-                conn.execute("UPDATE last_page SET page_number = ? WHERE id = 1", (page_number,))
-                conn.commit()
+                print("[INFO] Reopening new page...")
+                try:
+                    await page.close()
+                    page = await context.new_page()
+                except Exception as reopen_error:
+                    print(f"[CRITICAL] Cannot open new page: {reopen_error}")
+                    break
 
         await browser.close()
-
-
-def download_found_documents():
-    links = get_all_found_links()
-    out_folder = "cia_archive"
-    os.makedirs(out_folder, exist_ok=True)
-
-    for url in tqdm(links, desc="[+] Download found documents..."):
-        filename = os.path.join(out_folder, url.split("/")[-1])
-        if os.path.exists(filename):
-            continue
-        try:
-            r = requests.get(url, headers=HEADERS)#, timeout=0)
-            if r.status_code == 200:
-                with open(filename, "wb") as f:
-                    f.write(r.content)
-        except KeyboardInterrupt:
-            print("[!] Download aborted.")
-            sys.exit(3)
-        except Exception as e:
-            print(f"[!] Error by {url}: {e}")
-
-
-# === GET HIGHEST PAGE ===
-
-def get_last_page(conn):
-    c = conn.cursor()
-    c.execute('SELECT page_number FROM last_page WHERE id = 1')
-    result = c.fetchone()
-    return result[0] if result else 0
-
 
 # === MAIN ===
 
@@ -231,16 +209,20 @@ def main():
 
     parser = argparse.ArgumentParser(description="*RavenHunter* allows you to easily extract and retrieve RDP-CIA documents from the CIA database under the Freedom of Information Act.")
     parser.add_argument("-dl", action="store_true", help="Download found documents")
-    parser.add_argument("--timeout", type=int, default=10, help="Timeout in seconds between each page scrape")
+    parser.add_argument("--timeout", type=int, default=30, help="Timeout in seconds between each page scrape (default=30)")
     parser.add_argument("--resume", action="store_true", help="Resume scraping from the last page")
     parser.add_argument("--export", choices=["json", "csv"], help="Export found links as file")
     parser.add_argument("--verbose", action="store_true", help="Display generated links during search")
+    parser.add_argument("--tor", action="store_true", help="Use Tor proxy (127.0.0.1:9050)")
     args = parser.parse_args()
+
+    if args.tor and not tor_service_running():
+        print("[ERROR] Tor is not running.")
+        print("Please install and start the Tor service. On Windows, use the Expert Bundle. On Linux, ensure tor is installed and running.")
+        sys.exit(1)
 
     conn, c = init_db()
     show_summary()
-
-# === ARGS ===
 
     if args.export or args.dl:
         if args.export:
@@ -249,8 +231,7 @@ def main():
             download_found_documents()
         return
 
-
-    if not args.resume: 
+    if not args.resume:
         last_page = get_last_page(conn)
         if last_page > 0:
             answer = input(f"[PROMPT] A previous session was detected (last scraped page: {last_page}). Do you want to continue from there? (y/n): ").strip().lower()
@@ -259,18 +240,16 @@ def main():
             else:
                 resume_page = 0
         else:
-            resume_page = 0  
+            resume_page = 0
     else:
-        resume_page = get_last_page(conn) or 1  
+        resume_page = get_last_page(conn) or 1
 
     try:
-        asyncio.run(scrape_documents(args.timeout, resume_page, args.verbose, conn, c))
-
+        asyncio.run(scrape_documents(args.timeout, resume_page, args.verbose, conn, c, use_tor=args.tor))
     except KeyboardInterrupt:
         print("\n[INFO] Scraping interrupted. Saving progress...")
 
     show_summary()
-
 
 if __name__ == "__main__":
     main()
