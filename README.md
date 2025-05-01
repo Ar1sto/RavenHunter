@@ -10,9 +10,7 @@
 2. [Usage](#usage)
 3. [Advanced Usage](#advanced-usage)
 4. [Notes on Scraping .gov Websites](#notes-on-scraping-gov-websites)
-5. [Function Descriptions](#function-descriptions)
-6. [Screenshots](#screenshots)
-7. [License](#license)
+5. [License](#license)
 
 ---
 
