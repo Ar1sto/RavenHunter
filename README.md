@@ -110,16 +110,16 @@ python RavenHunter.py --tor
 ```
 This will use a SOCKS5 proxy at ```127.0.0.1:9050``` (default Tor config).
 
-# ❗ Important:
+ ❗ **Important**:
 - Make sure the Tor service is running locally before using this option.
 
-- # Linux:
+- **Linux**:
   Install and start Tor via:
 ```bash
 sudo apt install tor
 sudo systemctl start tor
 ```
-- # Windows:
+- **Windows**:
 Download and run the [Tor Expert Bundle.](https://www.torproject.org/download/tor/)
 Ensure that ```tor.exe``` is active (as a background process or service).
 
