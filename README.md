@@ -1,6 +1,6 @@
 # RavenHunter: CIA Document Scraping Tool
 
-*RavenHunter*v4 is a tool designed to scrape all available documents ever published by the CIA under the Freedom of Information Act (FOIA). This guide covers installation, usage, and additional notes for advanced users, including special considerations when scraping `.gov` websites.
+*RavenHunter*V4 is a tool designed to scrape all available documents ever published by the CIA under the Freedom of Information Act (FOIA). This guide covers installation, usage, and additional notes for advanced users, including special considerations when scraping `.gov` websites.
 
 ---
 
