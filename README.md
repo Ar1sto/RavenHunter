@@ -1,10 +1,10 @@
+<img src="https://github.com/Ar1sto/RavenHunter/blob/main/logo.png" alt="RavenHunter Logo" style="display:block; margin:auto;">
 # RavenHunter: CIA Document Scraping Tool
 
 *RavenHunter*V4 is a tool designed to scrape all available documents ever published by the CIA under the Freedom of Information Act (FOIA). This guide covers installation, usage, and additional notes for advanced users, including special considerations when scraping `.gov` websites.
 
 ---
 
-![RavenHunter Logo](https://github.com/Ar1sto/RavenHunter/blob/main/logo.png)
 ## Table of Contents
 
 1. [Installation](#installation)
