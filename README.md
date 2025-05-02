@@ -4,6 +4,7 @@
 
 ---
 
+![RavenHunter Logo](https://github.com/Ar1sto/RavenHunter/blob/main/logo.png)
 ## Table of Contents
 
 1. [Installation](#installation)
