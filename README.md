@@ -4,7 +4,10 @@
   <p>...is a tool designed to scrape all available documents ever published by the CIA under the Freedom of Information Act (FOIA). This guide covers installation, usage, and additional notes for advanced users, including special considerations when scraping `.gov` websites.</p>
 </div>
 
-
+=== ATTENTION ===
+The cia actively blocks traffic from the TOR network when scraping and VPN providers give timeout error messages. 
+I haven't had the time to look into other options like implementing proxy rotation yet. If you want to support me, 
+please send me your criticism and suggestions.
 ---
 
 ## Table of Contents
