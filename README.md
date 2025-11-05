@@ -6,11 +6,11 @@
 
 <div align="center">
   <h1>=== ATTENTION ===</h1>
-  <p>The cia actively blocks traffic from the TOR network when scraping and VPN providers give timeout error messages. 
+  <p>The CIA actively blocks traffic from the TOR network when scraping and VPN providers give timeout error messages. 
 I haven't had the time to look into other options like implementing proxy rotation yet. If you want to support me, 
 please send me your criticism and suggestions.</p>
 </div>
----
+
 
 ## Table of Contents
 
